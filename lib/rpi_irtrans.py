@@ -75,7 +75,8 @@ class RpiIRTrans:
         self.pwmRange = 0
         self.dutyCycle = 0;
         self.setFrequency(freq)
-        self.coders = {}
+        self.encoders = {}
+        self._MemIRCode = None
         print "GPIO Board rev : {0}".format(GPIO.RPI_REVISION)
         print "GPIO version : {0}".format(GPIO.VERSION)
         GPIO.BCMInit()
@@ -113,32 +114,33 @@ class RpiIRTrans:
     def getRealFrequency(self):
         return self.pwmEmitter.GetFrequence()
         
-    def register_Coder(self,  name,  code):
-        self.coders[name] = code
+    def register_Encoder(self,  name, encoder):
+        self.encoders[name] = encoder
     
-    def getCoder(self, name):
-        if name in self.coders :
-            return self.coders[name]
+    def getEncoder(self, name):
+        if name in self.encoders :
+            return self.encoders[name]
         else : return None
         
-    def sendIRCode(self,  nCoder, type,  irCode ):
-        coder = self.getCoder(nCoder)
-        if coder :
+    def sendIRCode(self,  encoderName, type,  irCode ):
+        encoder = self.getEncoder(encoderName)
+        if encoder :
             if type == DataTypes[RAWCode] :
                 result = self.emitRAWIRcode(irCode)
             elif type == DataTypes[BinTCode] :
-                pulsePairs = coder.irCodeToRAW(irCode)
+                pulsePairs = encoder.irCodeToRAW(irCode)
                 if pulsePairs != [] :
-                    result = self.emitRAWIRcode(coder.irCodeToRAW(irCode))
-                else : 
+                    result = self.emitRAWIRcode(encoder.irCodeToRAW(irCode))
+                    if result['error'] == '': self._MemIRCode = result
+                else :
                     print("IR code format error type {0} not respected.".format(type))
-                    result = {"error" : "IR code format error type {0} not respected.".format(type),  "code": irCode}
+                    result = {"error" : "IR code format error type {0} not respected.".format(type),  "code": irCode, "encoder": ""}
             else :
                 print("Code type {0} unknown".format(type))
-                result = {"error" : "Code type {0} unknown".format(type),  "code": irCode}
+                result = {"error" : "Code type {0} unknown".format(type),  "code": irCode, "encoder": ""}
         else :
-            print("Coder {0} not registered".format(nCoder))
-            result = {"error" : "Coder {0} not registered".format(nCoder),  "code": irCode}
+            print("Coder {0} not registered".format(encoderName))
+            result = {"error" : "Coder {0} not registered".format(encoderName),  "code": irCode, "encoder": ""}
         return result
             
     def emitRAWIRcode(self,  pulsePairs):
@@ -162,14 +164,15 @@ class RpiIRTrans:
         return result
     
     def rawToIRCode(self, codeIR):
-        result = {"error" : "No coder registered",  "code": ""}
-        r = {"error" : "",  "code": ""}
-        for code in self.coders :
-            r = self.coders[code].rawToIRCode(codeIR)
+        result = {"error" : "No encoder registered",  "code": ""}
+        r = {"error" : "",  "code": "", "encoder": ""}
+        for encoder in self.encoders :
+            r = self.encoders[encoder].rawToIRCode(codeIR)
             if r["error"] == "" :
-                print ("code Identified {0} :)".format(code))
+                r["encoder"] = encoder
+                print ("code Identified {0} :)".format(encoder))
         if r["error"] != "" :
-            result = {"error" : "No coder finded",  "code": r["code"]}
+            result = {"error" : "No encoder finded",  "code": r["code"],   "encoder": ""}
         else : result = r
         return result
     
@@ -180,12 +183,33 @@ class RpiIRTrans:
         print code
         result = self.rawToIRCode(code)
         if result["error"] == "" :
+            self._MemIRCode = result
             print ("code Identified :)")
         else :
             print ("Error in code : {0}".format(result["error"]))
         print (result["code"])
         self._manager.sendToWSClients(result)
     
+    def getMemIRcode(self):
+        if self._MemIRCode : return self._MemIRCode
+        else : return {'error' : 'Unknown status', 'code': '', 'encoder': ''}
+    
+    def setTolerances(self, encoder,  tolerances):
+        if self.encoders.has_key(encoder) :
+            return self.encoders[encoder].setTolerances(tolerances)
+        else :
+            return {'error' : "Can't set tolerances,unknown encoder : {0}".format(encoder)}
+            print "Can't set tolerances,unknown encoder : {0}".format(encoder)
+        
+    def getTolerances(self, encoder):
+        if self.encoders.has_key(encoder) :
+            return {'error' :'',  'tolerances': self.encoders[encoder].getTolerances()}
+        else :
+            return {'error' : "Can't get tolerances,unknown encoder : {0}".format(encoder),  'tolerances' : {}}
+            print "Can't get tolerances,unknown encoder : {0}".format(encoder)
+            
+            
+            
     def waitingEventBCM( *args,  **kwargs):
         while True :
             if not self.lockRecv :

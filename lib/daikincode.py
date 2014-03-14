@@ -65,7 +65,25 @@ class DaikinCode:
         self.code =""
         self.startP = startP
         self.endP = endP
-        
+    
+    def setTolerances(self,  tolerances):
+        try :
+            if tolerances.has_key('tolerance'):
+                tol = int(tolerances['tolerance'])
+            if tolerances.has_key('large'):
+                lTol = int(tolerances['large'])
+            if tolerances.has_key('maxout'):
+                maxOut = int(tolerances['maxout'])
+        except : 
+            return {'error': 'Bad tolerances format.'}
+        self.tol = tol
+        self.lTol = lTol
+        self.maxOut = maxOut
+        return {'error' : ""}
+    
+    def getTolerances(self):
+        return {'tolerance' : self.tol, 'large': self.lTol, 'maxout': self.maxOut}
+    
     def irCodeToRAW(self, code):
         pulsePairs = []
         try :

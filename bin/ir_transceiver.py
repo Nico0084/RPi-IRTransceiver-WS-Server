@@ -30,16 +30,105 @@ import os
 import time
 
 JSON Message structure, keys :
-    - 'header' : according to wsserver specifications : {'type',  'idws', 'idmsg', 'ip', 'timestamp' } see wsserver.py
-    - 'resquest' : Client resquest a WebSocket server action.
-        - 'sendIRCode' : sending an IR code through RpiIRTrans
-        - 'getCurrentCode' : return (by ack) the last (current) code in memory.
-    - 'DataType' : Encoding type of data ("RAW", "BinTimings", "HEX")
-    - 'Encoder' : Encoder protocole ("DAIKIN", "RC5", ...)
-    - 'IRCode' : code ir
-    - 'error' :  for ack message, report an error text or "" if not.
-Ack msg use same structure
-pub Message
+    - 'header' : according to wsserver specifications : 'header' :{{'type',  'idws', 'idmsg', 'ip', 'timestamp' }} see wsserver.py
+    - header type = 'req-ack' : Client request with ack
+        - 'resquest' : Client resquest a WebSocket server action.
+            - 'server-hbeat' : recept an hbeat
+                    Value set : nothing
+                    Value ack returned : 
+                        {"error" : "", "request": "server-hbeat",
+                          "data" : {"error" : ""}}
+            - 'sendIRCode' : sending an IR code through RpiIRTrans
+                    Value set : 
+                        {"datatype": "", "code": "", "encoder": ""}
+                    Value ack returned :                   
+                        {"error": "if, Global message", "request": "sendircode",
+                          "data": {"encoder": "", "code": "", "error": "if, encoder message" or ""}}
+            - 'getMemircode' : return (by ack) the last (current) code in memory.
+                    Value set : nothing
+                    Value ack returned :
+                        {"error": "if, Global message", "request": "getMemIRCode",
+                          "data": {"encoder": "", "code": "", "error": "if, encoder message" or ""}}
+            - 'setTolerances'
+                    Value set : 
+                        {"tolerances": {<A dict Function of encoder, DAIKIN example> "large": 300, "maxout": 10, "tolerance": 150}, "encoder": ""}
+                    Value ack returned :
+                        {"error": "if, Global message", "request": "setTolerances", 
+                          "data": {"error": "if, bad parameters" or ""}}
+            - 'getTolerances'
+                    Value set : {"encoder": "" }
+                    Value ack returned :
+                        {"error": ""if, Global message", "request": "getTolerances", 
+                          "data": {"tolerances": {<A dict Function of encoder, DAIKIN example> "large": 300, "maxout": 10, "tolerance": 150}, "encoder" : "", "error": "if, encoder message" or ""}}
+                      
+    - header type = 'pub' : Message broadcast for all client
+        - "host": "<Name of server host>",
+        - "type" : The type of plushed message
+            - 'codereceived' : an ir code if received by IRTrans.
+                - "data": {"encoder": "", "code": ""', "error": "if, encoder message" or ""}}
+
+ 'datatype' : Encoding type of data ("RAW", "BinTimings", "HEX")
+ 'encoder' : Encoder protocole ("DAIKIN", "RC5", ...)
+ 'code', 'code' : Infrared code
+ 'tolerances': A dict depending of encoder, type for example DAIKIN : {"tolerance": 150, "large": 300, "maxout": 10}
+ 'error' :  for ack message, report an error text or "" if not.
+ 
+- Client sender example message :
+    {
+        "header":
+            {
+                "idws": 42865, 
+                "idmsg": 48650, 
+                "type": "req-ack", 
+                "timestamp": 1394795765.299422, 
+                "ip": "192.168.0.1"
+            },
+        "request": "sendIRCode", 
+        "datatype": "BinTimings", 
+        "code": "2100010...............0010000110", 
+        "encoder": "DAIKIN"
+    }
+
+- Sended ack response :
+    {
+        "header": 
+            {
+                "idws": 42865, 
+                "idmsg": 48650, 
+                "type": "ack", 
+                "timestamp": 139479691970, 
+                "ip": "192.168.0.2"
+            }, 
+        "request": "sendIRCode", 
+        "error": "", 
+        "data": 
+            {
+                "encoder": "DAIKIN", 
+                "code": "2100010...............0010000110", 
+                "error": "No encoder finded"
+            }
+        }
+    }
+
+- Sended pub response :
+       "header": 
+            {
+                "idws": 42865, 
+                "idmsg": 48650, 
+                "type": "pub", 
+                "timestamp": 139479691970, 
+                "ip": "192.168.0.2"
+            }, 
+        "type" : "codereceived",
+        "data": 
+            {
+                "encoder": "DAIKIN", 
+                "code": "2100010...............0010000110"', 
+                "error": ""
+            }
+        }
+    }
+
 """
 
 import sys
@@ -69,7 +158,7 @@ class RpiTransceiver():
     
     def __init__(self,  wsPort):
         self._irTrans = RpiIRTrans(self,  18, 25, 38000)
-        self._irTrans.register_Coder("DAIKIN",  DaikinCode())
+        self._irTrans.register_Encoder("DAIKIN",  DaikinCode())
         self._log = None
         self._wsServer =  BroadcastServer(wsPort,  self.cb_ServerWS,  self._log) # demarre le websocket server
         self._run()
@@ -79,12 +168,26 @@ class RpiTransceiver():
         blockAck = False
         report = {'error':  'Message not handle.'}
         ackMsg = {}
+        erAck = ''
         print "WS - Client Request",  message
         if message.has_key('header') :
             if message['header']['type'] in ('req', 'req-ack'):
-                if message['request'] == 'sendIRCode' :
-                    report = self._irTrans.sendIRCode(message['Encoder'],  message['DataType'], message['IRCode'])
+                if message['request'] == 'server-hbeat' :
+                    report['error'] =''
+                elif message['request'] == 'sendIRCode' :
+                    erAck = "IR emitter don't confirm final reception."
+                    report = self._irTrans.sendIRCode(message['encoder'],  message['datatype'], message['code'])
+                elif message['request'] == 'getMemIRCode' :
+                    erAck = 'Fail to get IR Code in memory.'
+                    report = self._irTrans.getMemIRcode()
+                elif message['request'] == 'setTolerances' :
+                    erAck = 'Fail to set tolerances.'
+                    report = self._irTrans.setTolerances(message['encoder'],  message['tolerances'])
+                elif message['request'] == 'getTolerances' :
+                    erAck = 'Fail to get tolerances.'
+                    report = self._irTrans.getTolerances(message['encoder'])
                 else :
+                    erAck = 'Client request Fail.'
                     report['error'] ='Unknown request.'
                     print "commande inconnue"
             if message['header']['type'] == 'req-ack' and not blockAck :
@@ -92,8 +195,8 @@ class RpiTransceiver():
                                                'ip' : message['header']['ip'] , 'timestamp' : long(time.time()*100)}
                 ackMsg['request'] = message['request']
                 if report :
-                    if 'error' in report :
-                        ackMsg['error'] = report['error']
+                    if report['error'] != '':
+                        ackMsg['error'] = erAck
                     else :
                         ackMsg['error'] = ''
                     ackMsg['data'] = report
@@ -114,8 +217,7 @@ class RpiTransceiver():
             print" *** Clean up exit :)"
    
     def sendToWSClients(self, message):
-        msg = {"host" : "RPI_PAC_Salon"}
-        msg.update(message)
+        msg = {"host" : "RPI_PAC_Salon", 'type': 'codereceived',  'data': message}
         print "message to clients : {0}".format(msg)
         if  self._wsServer : self._wsServer.broadcastMessage(msg)
             
