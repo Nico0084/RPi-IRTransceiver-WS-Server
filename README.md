@@ -1,45 +1,46 @@
-
-Cette librairie Python fournie un server websocket qui permet de recevoir et envoyer
-des codes infrarouge à l'aide des ports GPIO d'un raspberry.
-
-La librairie utilise les librairies :
- - RPi.GPIO (https://pypi.python.org/pypi/RPi.GPIO) modifiée
- - BCM2835 (http://www.airspayce.com/mikem/bcm2835/index.html) intégrée dans RPi.GPIO
- 
-L'utilisation de BCM2835 permet une meilleur gestion du PWM (Pulse With Modulation) pour
-l'émition du code infrarouge.
-
-Ce code modifié est disponible ici : https://github.com/Nico0084/RPi-GPIO_BCM2835-IR_TOOLS
-Il est à installer comme dépendance en lieu et place de RPi.GPIO.
-
-Pour l'instant il ne travail en PWM que sur le GPIO 18 (Channel 0) et pour une fréquence de 38Khz
-
-Le Raspberry ne permettent pas de contôle temps réel, le code ne peut garantir l'émission et reception
-de façon sur.
-
-Il ni a aucune garantie sur le fonctionnement.
-
-Installation :
-=============
-
-git clone http://github.com/Nico0084/RPi-IRTransceiver-WS-Server.git
-cd RPi-IRTransceiver-WS-Server
-sudo python setup.py install
-
-Ajouter le démarrage du server au boot :
-==============================
-
-sudo update-rc.d irtransceiver defaults 99
-
-Démarrage manuel du server :
+RPi-IRTransceiver-WS-Serrver
 ============================
 
-sudo /etc/init.d/irtransceiver start
-ou
-irtransceiver
+Cette librairie Python fournie un server websocket qui permet de recevoir et envoyer
+des codes infrarouge Ã  l'aide des ports GPIO d'un raspberry.
 
-pour develloper un client voir le script tests/wsclient_test.py 
-ainsi que l'entête du script bin/ir_transceiver.py
+La librairie utilise les librairies :
+* RPi.GPIO (https://pypi.python.org/pypi/RPi.GPIO) modifiÃ©e
+* BCM2835 (http://www.airspayce.com/mikem/bcm2835/index.html) intÃ©grÃ©e dans RPi.GPIO
+ 
+L'utilisation de BCM2835 permet une meilleur gestion du PWM (Pulse With Modulation) pour
+l'Ã©mission du code infrarouge.
+
+Ce code modifiÃ© est disponible ici : https://github.com/Nico0084/RPi-GPIO_BCM2835-IR_TOOLS
+Il est Ã  installer comme dÃ©pendance en lieu et place de RPi.GPIO.
+
+Pour l'instant il ne travail en PWM que sur le GPIO 18 (Channel 0) et pour une frÃ©quence de 38Khz
+
+Le Raspberry ne permettent pas de contrÃ´le temps rÃ©el, le code ne peut garantir l'Ã©mission et rÃ©ception de faÃ§on sur.
+
+Il ni a aucune garantie sur le bon fonctionnement.
+
+Installation :
+--------------
+
+    git clone http://github.com/Nico0084/RPi-IRTransceiver-WS-Server.git
+    cd RPi-IRTransceiver-WS-Server
+    sudo python setup.py install
+
+Ajouter le dÃ©marrage du serveur au boot :
+----------------------------------------
+
+    sudo update-rc.d irtransceiver defaults 99
+
+DÃ©marrage manuel du serveur :
+----------------------------
+
+    sudo /etc/init.d/irtransceiver start
+ou
+
+    irtransceiver
+
+pour dÃ©velopper un client voir le script `tests/wsclient_test.py` ainsi que l'entÃªte du script `bin/ir_transceiver.py`
 
 
 
