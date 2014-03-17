@@ -217,10 +217,14 @@ class RpiTransceiver():
             print" *** Clean up exit :)"
    
     def sendToWSClients(self, message):
-        msg = {"host" : "RPI_PAC_Salon", 'type': 'codereceived',  'data': message}
+        msg = {"host" : os.uname()[1], 'type': 'codereceived',  'data': message}
         print "message to clients : {0}".format(msg)
         if  self._wsServer : self._wsServer.broadcastMessage(msg)
-            
+
+def main():
+    RpiTransceiver(5590)
+    print" *** Clean up exit :)"    
+    
 if __name__ == "__main__":
     RpiTransceiver(5590)
     print" *** Clean up exit :)"

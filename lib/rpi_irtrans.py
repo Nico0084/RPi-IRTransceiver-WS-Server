@@ -35,6 +35,7 @@ except RuntimeError:
 
 import time
 import threading
+import os
 
 class RpiIRTransException(Exception):
     """"Rpi Transceiver generic exception class.
@@ -77,6 +78,7 @@ class RpiIRTrans:
         self.setFrequency(freq)
         self.encoders = {}
         self._MemIRCode = None
+        self._fileBackup = "/var/local/irtranslast.txt"
         print "GPIO Board rev : {0}".format(GPIO.RPI_REVISION)
         print "GPIO version : {0}".format(GPIO.VERSION)
         GPIO.BCMInit()
@@ -94,6 +96,7 @@ class RpiIRTrans:
             self.pwmEmitter = GPIO.PWM2835(0, self.irEmitter, self.pwmClock, self.pwmRange)
         else :
             GPIO.BCMsetModeGPIO(self.irEmitter, 1)
+        self.readIRCodeFile()
             
     def __del__(self):
         GPIO.BCMClose()
@@ -131,7 +134,9 @@ class RpiIRTrans:
                 pulsePairs = encoder.irCodeToRAW(irCode)
                 if pulsePairs != [] :
                     result = self.emitRAWIRcode(encoder.irCodeToRAW(irCode))
-                    if result['error'] == '': self._MemIRCode = result
+                    if result['error'] == '': 
+                        self._MemIRCode = result
+                        self.writeIRCodeFile()
                 else :
                     print("IR code format error type {0} not respected.".format(type))
                     result = {"error" : "IR code format error type {0} not respected.".format(type),  "code": irCode, "encoder": ""}
@@ -184,6 +189,7 @@ class RpiIRTrans:
         result = self.rawToIRCode(code)
         if result["error"] == "" :
             self._MemIRCode = result
+            self.writeIRCodeFile()
             print ("code Identified :)")
         else :
             print ("Error in code : {0}".format(result["error"]))
@@ -193,7 +199,48 @@ class RpiIRTrans:
     def getMemIRcode(self):
         if self._MemIRCode : return self._MemIRCode
         else : return {'error' : 'Unknown status', 'code': '', 'encoder': ''}
-    
+
+    def readIRCodeFile(self):
+        """lit le code sauvergarder d'un fichier type txt"""
+        if not os.path.isfile(self._fileBackup) : 
+            print("file {0} not exist, no code memorised at last".format(self._fileBackup))
+            return False
+        else :
+            try:
+                fich = open(self._fileBackup, "r")
+            except :
+                print 'error openning file : ', self._fileBackup
+                return False
+            else :
+                if fich.readline() =="[LASTCODE]\n" :
+                    code = {'error' :""}
+                    code['code'], f = fich.readline().split("\n")
+                    if fich.readline() == "[ENCODER]\n" :
+                        code['encoder'], f = fich.readline().split("\n")
+                        self._MemIRCode = code
+                        retval = True
+                        print "Code read from file : {0}".format(self._MemIRCode)
+                    else: retval = False
+                else: retval = False
+                fich.close()
+                return retval
+
+    def writeIRCodeFile(self):
+        """Ecrit le code sauvergarder d'un fichier type txt"""
+        if self._MemIRCode :
+            try:
+                fich = open(self._fileBackup, "w")
+            except :
+                print 'error creating file : ', self._fileBackup
+            else :
+                fich.write("[LASTCODE]\n")
+                fich.write("{0}\n".format(self._MemIRCode['code']))
+                fich.write("[ENCODER]\n")
+                fich.write("{0}\n".format(self._MemIRCode['encoder']))
+                fich.close()
+                print("Code Saved")
+        else: print("no code to save.")
+
     def setTolerances(self, encoder,  tolerances):
         if self.encoders.has_key(encoder) :
             return self.encoders[encoder].setTolerances(tolerances)
@@ -207,9 +254,7 @@ class RpiIRTrans:
         else :
             return {'error' : "Can't get tolerances,unknown encoder : {0}".format(encoder),  'tolerances' : {}}
             print "Can't get tolerances,unknown encoder : {0}".format(encoder)
-            
-            
-            
+
     def waitingEventBCM( *args,  **kwargs):
         while True :
             if not self.lockRecv :
@@ -220,7 +265,7 @@ class RpiIRTrans:
     
     def callback_gpioEvent(self,  GPIOPin):
         if GPIOPin == self.irReceiver :
-            print"IR Receiver Event ..."
+#            print"IR Receiver Event ..."
             codeIR = GPIO.BCMWatchPulsePairsGPIO(self.irReceiver)
             if codeIR : self.receiveRAWIRCode(codeIR)
         else :
