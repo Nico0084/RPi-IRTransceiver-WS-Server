@@ -60,16 +60,18 @@ HEXCode = 2
 class RpiIRTrans:
     '''Represente un émeteur/recepteur de signaux infrarouge RAW'''
     
-    def __init__(self, manager,  pinIREmitter = 18,  pinIRReceiver = 25,  freq= 38000,  usePWM = True,  useGPIOIn = True):
+    def __init__(self, manager,  pinIREmitter = 18,  pinIRReceiver = 25, pinIRAck = 17, freq = 38000,  usePWM = True,  useGPIOIn = True):
         '''Initialise le transmetteur
         @param pinIREmitter: Id GPIO du pin Emetteur (output) defaut GPIO 18)
         @param pinIRReceiver: Id GPIO du pin recepteur (intput) defaut GPIO 25)
+        @param pinIRAck: Id GPIO du pin for ack send (intput) defaut GPIO 17)
         '''
         self._manager = manager
         self.irEmitter = pinIREmitter
         self.pwmEmitter = None
         self.irReceiver = pinIRReceiver
         self.freq = freq
+        self.irAck = pinIRAck
         self.useGPIO = useGPIOIn
         self.lockRecv = False
         self.pwmClock = 0
@@ -78,16 +80,26 @@ class RpiIRTrans:
         self.setFrequency(freq)
         self.encoders = {}
         self._MemIRCode = None
+        self.ackState = 0
+        self.tLastAck = time.time()
+        self.waitAck = 0
         self._fileBackup = "/var/local/irtranslast.txt"
         print "GPIO Board rev : {0}".format(GPIO.RPI_REVISION)
         print "GPIO version : {0}".format(GPIO.VERSION)
         GPIO.BCMInit()
-        if self.useGPIO : 
+        if self.useGPIO :
             GPIO.setmode(GPIO.BCM) 
             GPIO.setup(self.irReceiver, GPIO.IN)
             GPIO.add_event_detect(self.irReceiver, GPIO.BOTH)
             GPIO.add_event_callback(self.irReceiver, self.callback_gpioEvent)
+            print "GPIO {0} Input IR receiver ready\n".format(self.irReceiver)           
+            GPIO.setup(self.irAck, GPIO.IN, pull_up_down= GPIO.PUD_DOWN)
+            GPIO.add_event_detect(self.irAck, GPIO.RISING)#, bouncetime = 200)
+            GPIO.add_event_callback(self.irAck, self.callback_gpioAck)
+            self.ackState = GPIO.input(self.irAck)
+            print "GPIO {0} Input ACK ready, state : {1}\n".format(self.irAck, self.ackState)         
         else :
+            print "BCM {0} Input ready\n".format(self.irReceiver)
             GPIO.BCMsetModeGPIO(self.irReceiver, 0)
             th = threading.Thread(None, self.waitingEventBCM, "th_wait_for_gpio_event", (), {})
             th.daemon = True
@@ -159,6 +171,7 @@ class RpiIRTrans:
             print "Emit pulse pairs for ir code {0} pairs with software freq : 38 kHz".format(len(pulsePairs))
             codeIR = GPIO.BCMPulsePairsGPIO(pulsePairs, pOut)
         self.lockRecv = False
+        self.waitAck = time.time()
         for p in codeIR : code.append([int(p[0]), int(p[1])])
         result = self.rawToIRCode(code)
         if result["error"] == "" :
@@ -166,6 +179,14 @@ class RpiIRTrans:
         else :
             print ("Error sending code : {0}".format(result["error"]))
         print (result["code"])
+        time.sleep(1)
+        if not self.waitAck :
+            print "((((((( good ack )))))))"
+            result = self.rawToIRCode(pulsePairs)
+        else :
+            print "!!!!! no ack !!!!!"
+            if result["error"] == "" :
+                result["error"]  = "No hardware ack."
         return result
     
     def rawToIRCode(self, codeIR):
@@ -183,6 +204,7 @@ class RpiIRTrans:
     
     def receiveRAWIRCode(self, codeIR):
         code = []
+        self.waitAck = time.time()
         for p in codeIR : code.append([int(p[0]), int(p[1])])
         print "Decoding code : {0} pairs".format(len(code))
         print code
@@ -195,6 +217,10 @@ class RpiIRTrans:
             print ("Error in code : {0}".format(result["error"]))
         print (result["code"])
         self._manager.sendToWSClients(result)
+        if not self.waitAck:
+            print "======= Ack receiver OK ======"
+        else :
+            print "---- No Ack receiver for code received ----"
     
     def getMemIRcode(self):
         if self._MemIRCode : return self._MemIRCode
@@ -241,6 +267,17 @@ class RpiIRTrans:
                 print("Code Saved")
         else: print("no code to save.")
 
+    def getState(self):
+        """Renvoi le status du pin self.irAck qui corresponds à l'état de marche/arret."""
+        if self.irAck:
+            self.ackState = GPIO.input(self.irAck)
+            print "GPIO {0} Input ACK, state : {1}\n".format(self.irAck, self.ackState)
+            return {'error': "", 'state': self.ackState}
+        else:
+            print "No pin ack defined, can't get status."
+            return {'error': "No pin ack defined, can't get status."}
+
+
     def setTolerances(self, encoder,  tolerances):
         if self.encoders.has_key(encoder) :
             return self.encoders[encoder].setTolerances(tolerances)
@@ -270,3 +307,27 @@ class RpiIRTrans:
             if codeIR : self.receiveRAWIRCode(codeIR)
         else :
             print "IR Receiver Event on bad pin : {0}".format(GPIOPin)
+
+    def callback_gpioAck(self,  GPIOPin):
+        if GPIOPin == self.irAck :
+            state = GPIO.input(GPIOPin) #run only when button is released
+            t = time.time()
+            tdiff = t - self.tLastAck 
+            print "********************* Callback: state {0}, time step {1} ************".format(state, tdiff)
+            if self.ackState != state :
+                if state and (tdiff > 0.01): 
+                    if self.waitAck :
+                        if t - self.waitAck < 0.4:
+                            print"********* IR Receiver Ack on pin {0}, time : {1} *********\n".format(GPIOPin, tdiff)
+                            time.sleep(2)
+                        else:
+                            print"........ IR Receiver to long Ack on pin {0}, time : {1} ........\n".format(GPIOPin, tdiff)
+                        self.waitAck = 0
+                    else : print"***** IR Receiver Ack on pin {0} without waiting ack, time : {1}\n".format(GPIOPin, tdiff)
+                self.tLastAck = t
+                self.ackState = state
+            else : print"----- Ack Pin {0}, no change state : {1}".format(GPIOPin, state)
+        else :
+            print "***** IR Receiver Ack on bad pin : {0}\n".format(GPIOPin)
+
+

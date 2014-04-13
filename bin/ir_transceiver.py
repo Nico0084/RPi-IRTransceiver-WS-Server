@@ -157,7 +157,7 @@ class RpiTransceiverException(Exception):
 class RpiTransceiver():
     
     def __init__(self,  wsPort):
-        self._irTrans = RpiIRTrans(self,  18, 25, 38000)
+        self._irTrans = RpiIRTrans(self, 18, 25, 17, 38000)
         self._irTrans.register_Encoder("DAIKIN",  DaikinCode())
         self._log = None
         self._wsServer =  BroadcastServer(wsPort,  self.cb_ServerWS,  self._log) # demarre le websocket server
@@ -169,6 +169,7 @@ class RpiTransceiver():
         report = {'error':  'Message not handle.'}
         ackMsg = {}
         erAck = ''
+        self._irTrans.getState()
         print "WS - Client Request",  message
         if message.has_key('header') :
             if message['header']['type'] in ('req', 'req-ack'):
@@ -186,6 +187,9 @@ class RpiTransceiver():
                 elif message['request'] == 'getTolerances' :
                     erAck = 'Fail to get tolerances.'
                     report = self._irTrans.getTolerances(message['encoder'])
+                elif message['request'] == 'getState' :
+                    erAck = 'Fail to get state.'
+                    report = self._irTrans.getState()
                 else :
                     erAck = 'Client request Fail.'
                     report['error'] ='Unknown request.'
