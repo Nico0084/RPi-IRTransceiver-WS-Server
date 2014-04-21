@@ -204,23 +204,28 @@ class RpiIRTrans:
     
     def receiveRAWIRCode(self, codeIR):
         code = []
-        self.waitAck = time.time()
         for p in codeIR : code.append([int(p[0]), int(p[1])])
         print "Decoding code : {0} pairs".format(len(code))
-        print code
+#        print code
         result = self.rawToIRCode(code)
         if result["error"] == "" :
-            self._MemIRCode = result
-            self.writeIRCodeFile()
             print ("code Identified :)")
         else :
             print ("Error in code : {0}".format(result["error"]))
         print (result["code"])
-        self._manager.sendToWSClients(result)
-        if not self.waitAck:
+        hardAck = True
+        while self.waitAck:
+            if time.time() - self.waitAck > 3.5:
+                self.waitAck = 0
+                hardAck = False
+            else : time.sleep(0.1)
+        if hardAck:
             print "======= Ack receiver OK ======"
+            self._MemIRCode = result
+            self.writeIRCodeFile()
+            self._manager.sendToWSClients(result)
         else :
-            print "---- No Ack receiver for code received ----"
+            print "---- No hard Ack receiver for code received ----"
     
     def getMemIRcode(self):
         if self._MemIRCode : return self._MemIRCode
@@ -295,6 +300,7 @@ class RpiIRTrans:
     def waitingEventBCM( *args,  **kwargs):
         while True :
             if not self.lockRecv :
+                self.waitAck = time.time()
                 codeIR = GPIO.BCMWatchPulsePairsGPIO(self.irReceiver)
                 if codeIR : self.receiveRAWIRCode(codeIR)
                 time.sleep(0.01)
@@ -303,6 +309,7 @@ class RpiIRTrans:
     def callback_gpioEvent(self,  GPIOPin):
         if GPIOPin == self.irReceiver :
 #            print"IR Receiver Event ..."
+            self.waitAck = time.time()
             codeIR = GPIO.BCMWatchPulsePairsGPIO(self.irReceiver)
             if codeIR : self.receiveRAWIRCode(codeIR)
         else :
@@ -310,7 +317,7 @@ class RpiIRTrans:
 
     def callback_gpioAck(self,  GPIOPin):
         if GPIOPin == self.irAck :
-            state = GPIO.input(GPIOPin) #run only when button is released
+            state = GPIO.input(GPIOPin)
             t = time.time()
             tdiff = t - self.tLastAck 
             print "********************* Callback: state {0}, time step {1} ************".format(state, tdiff)
@@ -319,11 +326,11 @@ class RpiIRTrans:
                     if self.waitAck :
                         if t - self.waitAck < 0.4:
                             print"********* IR Receiver Ack on pin {0}, time : {1} *********\n".format(GPIOPin, tdiff)
-                            time.sleep(2)
                         else:
                             print"........ IR Receiver to long Ack on pin {0}, time : {1} ........\n".format(GPIOPin, tdiff)
                         self.waitAck = 0
-                    else : print"***** IR Receiver Ack on pin {0} without waiting ack, time : {1}\n".format(GPIOPin, tdiff)
+                    else :
+                        print"***** IR Receiver Ack on pin {0} without waiting ack, time : {1}\n".format(GPIOPin, tdiff)
                 self.tLastAck = t
                 self.ackState = state
             else : print"----- Ack Pin {0}, no change state : {1}".format(GPIOPin, state)
