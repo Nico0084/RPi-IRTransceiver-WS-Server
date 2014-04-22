@@ -223,7 +223,11 @@ class RpiIRTrans:
             print "======= Ack receiver OK ======"
             self._MemIRCode = result
             self.writeIRCodeFile()
-            self._manager.sendToWSClients(result)
+            self._manager.sendToWSClients('codereceived',  result)
+            if result["error"] != "" : # Code n'est pas identifié, mais envoi l'état (ackState) si disponible.
+                data = self.getState()
+                if data['error'] == "":
+                    self._manager.sendToWSClients('hardState',  data)
         else :
             print "---- No hard Ack receiver for code received ----"
     
@@ -280,7 +284,7 @@ class RpiIRTrans:
             return {'error': "", 'state': self.ackState}
         else:
             print "No pin ack defined, can't get status."
-            return {'error': "No pin ack defined, can't get status."}
+            return {'error': "No pin ack defined, can't get status.",  'state': 0}
 
 
     def setTolerances(self, encoder,  tolerances):

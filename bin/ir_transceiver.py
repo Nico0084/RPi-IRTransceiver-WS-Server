@@ -60,12 +60,20 @@ JSON Message structure, keys :
                     Value ack returned :
                         {"error": ""if, Global message", "request": "getTolerances", 
                           "data": {"tolerances": {<A dict Function of encoder, DAIKIN example> "large": 300, "maxout": 10, "tolerance": 150}, "encoder" : "", "error": "if, encoder message" or ""}}
+            - 'getState'
+                    Value set : nothing
+                    Value ack returned :
+                        {"error": "" message if no pin set for state capability.", 
+                          "data": {"state": 0 or 1 for on/ off status, 0 if no capability, "error": "message if no pin set for state capability." or ""}}
                       
     - header type = 'pub' : Message broadcast for all client
         - "host": "<Name of server host>",
         - "type" : The type of plushed message
             - 'codereceived' : an ir code if received by IRTrans.
                 - "data": {"encoder": "", "code": ""', "error": "if, encoder message" or ""}}
+            - 'hardState' : if capability and codereceived is not reconized publish hard state.
+                - "data": {"state": 0 or 1, "error":""}
+            
 
  'datatype' : Encoding type of data ("RAW", "BinTimings", "HEX")
  'encoder' : Encoder protocole ("DAIKIN", "RC5", ...)
@@ -220,8 +228,8 @@ class RpiTransceiver():
             self._wsServer.close()
             print" *** Clean up exit :)"
    
-    def sendToWSClients(self, message):
-        msg = {"host" : os.uname()[1], 'type': 'codereceived',  'data': message}
+    def sendToWSClients(self, type,  message):
+        msg = {"host" : os.uname()[1], 'type': type,  'data': message}
         print "message to clients : {0}".format(msg)
         if  self._wsServer : self._wsServer.broadcastMessage(msg)
 
