@@ -137,15 +137,15 @@ class RpiIRTrans:
             return self.encoders[name]
         else : return None
         
-    def sendIRCode(self,  encoderName, type,  irCode ):
+    def sendIRCode(self,  encoderName, type,  irCode):
         encoder = self.getEncoder(encoderName)
         if encoder :
             if type == DataTypes[RAWCode] :
-                result = self.emitRAWIRcode(irCode)
+                result = self.emitRAWIRcode(irCode, 5)
             elif type == DataTypes[BinTCode] :
                 pulsePairs = encoder.irCodeToRAW(irCode)
                 if pulsePairs != [] :
-                    result = self.emitRAWIRcode(encoder.irCodeToRAW(irCode))
+                    result = self.emitRAWIRcode(encoder.irCodeToRAW(irCode),  5)
                     if result['error'] == '': 
                         self._MemIRCode = result
                         self.writeIRCodeFile()
@@ -160,33 +160,38 @@ class RpiIRTrans:
             result = {"error" : "Coder {0} not registered".format(encoderName),  "code": irCode, "encoder": ""}
         return result
             
-    def emitRAWIRcode(self,  pulsePairs):
-        self.lockRecv = True
-        code = []
-        codeIR = []
-        if self.pwmEmitter : 
-            print "Hardware pwm emit {0} pairs, freq : {1} Hz, clock {2}, range {3}, duty cycle :{4}%".format(len(pulsePairs), self.pwmEmitter.GetFrequence(), self.pwmClock, self.pwmRange, self.dutyCycle)
-            codeIR = self.pwmEmitter.SendPulsePairs(pulsePairs, self.dutyCycle)
-        else :
-            print "Emit pulse pairs for ir code {0} pairs with software freq : 38 kHz".format(len(pulsePairs))
-            codeIR = GPIO.BCMPulsePairsGPIO(pulsePairs, pOut)
-        self.lockRecv = False
-        self.waitAck = time.time()
-        for p in codeIR : code.append([int(p[0]), int(p[1])])
-        result = self.rawToIRCode(code)
+    def emitRAWIRcode(self,  pulsePairs, maxRepeat = 1):
+        if self.irAck : repeat = 1
+        else : repeat = maxRepeat
+        while repeat <= maxRepeat :
+            self.lockRecv = True
+            code = []
+            codeIR = []
+            if self.pwmEmitter : 
+                print "Hardware pwm emit {0} try, {1} pairs, freq : {2} Hz, clock {3}, range {4}, duty cycle :{5}%".format(repeat, len(pulsePairs), self.pwmEmitter.GetFrequence(), self.pwmClock, self.pwmRange, self.dutyCycle)
+                codeIR = self.pwmEmitter.SendPulsePairs(pulsePairs, self.dutyCycle)
+            else :
+                print "Emit {0} try, pulse pairs for ir code {1} pairs with software freq : 38 kHz".format(repeat, len(pulsePairs))
+                codeIR = GPIO.BCMPulsePairsGPIO(pulsePairs, pOut)
+            self.lockRecv = False
+            self.waitAck = time.time()
+            for p in codeIR : code.append([int(p[0]), int(p[1])])
+            result = self.rawToIRCode(code)
+            time.sleep(1)
+            if not self.waitAck :
+                print "((((((( good ack )))))))"
+                result = self.rawToIRCode(pulsePairs)
+                repeat = maxRepeat
+            elif self.irAck :
+                print "!!!!! no ack !!!!!"
+                if result["error"] == "" :
+                    result["error"]  = "No hardware ack."
+            repeat += 1
         if result["error"] == "" :
             print ("code DAIKIN sended :)")
         else :
             print ("Error sending code : {0}".format(result["error"]))
         print (result["code"])
-        time.sleep(1)
-        if not self.waitAck :
-            print "((((((( good ack )))))))"
-            result = self.rawToIRCode(pulsePairs)
-        else :
-            print "!!!!! no ack !!!!!"
-            if result["error"] == "" :
-                result["error"]  = "No hardware ack."
         return result
     
     def rawToIRCode(self, codeIR):
