@@ -84,7 +84,7 @@ class WsUIServerException(Exception):
         
 class BroadcastServer(object):
     """Class de gestion du server websocket pour dialogue plugin UI"""
-    def __init__(self,  port=5570,  cb_recept = None,  log = None ):
+    def __init__(self,  port=5570,  cb_recept = None,  log = None,  logLevel = logging.INFO):
         fName = "//var//log//wsserver.log"
         self.log = log
         if self.log :
@@ -93,11 +93,10 @@ class BroadcastServer(object):
                     fName = os.path.dirname(h.baseFilename) + "/wsserver.log"
                     break
             logLevel = self.log.getEffectiveLevel()
-        else : logLevel = logging.DEBUG
         self._wsLogws = wsServer_logger(level = logLevel)
         logfmt = logging.Formatter("[%(asctime)s] %(levelname)s %(message)s")
-        handler = logging.handlers.RotatingFileHandler(fName, maxBytes=10485760, backupCount=5)
-        handler.setLevel(logging.DEBUG)
+        handler = logging.handlers.RotatingFileHandler(fName, maxBytes=2097152, backupCount=5)
+        handler.setLevel(logLevel)
         handler.setFormatter(logfmt)
         self._wsLogws.addHandler(handler)
         self.logMsg("info", "Log WS Server level {0} on : {1}".format(logLevel , fName))
@@ -168,7 +167,7 @@ class BroadcastServer(object):
                     print message
               #      self.logMsg("debug", "Server broadcasting sended to : {0}".format(message['header']['idws']))
                 except Exception:
-                    self.logMsg("debug",  "Failed sockets : {0}:{1}".format(ws.peer_address[0], ws.peer_address[1]))
+                    self.logMsg("warning",  "Failed sockets : {0}:{1}".format(ws.peer_address[0], ws.peer_address[1]))
                     pass
 
     def sendAck(self, ackMessage):
@@ -189,7 +188,7 @@ class BroadcastServer(object):
                                 if k != "data" and k != "header":  info[k] = ackMsg[k]
                             self.logMsg("debug", "Ack sended to WebSocket client : {0}:{1} => {2}".format(ackMsg['header']['ip'], ackMsg['header']['idws'],  info))
                         except Exception:
-                            self.logMsg("debug",  "Failed sockets : {0}:{1}".format(ws.peer_address[0], ws.peer_address[1]))
+                            self.logMsg("warning",  "Failed sockets : {0}:{1}".format(ws.peer_address[0], ws.peer_address[1]))
                             pass
 
     def logMsg(self, type = "info", msg =""):
